@@ -1,0 +1,18 @@
+name: BuildApp
+on:
+  push:
+    paths:
+      - 'content-web/**'
+  workflow_dispatch:
+jobs:
+  clear_build_push:
+    runs-on: self-hosted
+    steps:
+      - run: sudo docker stop content-web
+      - run: sudo docker rm content-web
+      - run: sudo docker image rm content-web:latest
+      - uses: actions/checkout@v2
+      - run: cd content-web && sudo docker build -t web .
+      - run: sudo docker tag web fabmedicalsre.azurecr.io/web
+      - run: sudo docker push fabmedicalsre.azurecr.io/web
+      - run: sudo docker run --net fabmedical --name content-web -p 3000:3000 -d web
