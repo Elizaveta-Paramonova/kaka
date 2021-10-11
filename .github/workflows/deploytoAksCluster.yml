@@ -1,0 +1,50 @@
+on: [push]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    
+    - uses: azure/docker-login@v1
+      with:
+        login-server: fabmedicalsre.azurecr.io
+        username: ${{ secrets.acr_fabmedicalsre_username }}
+        password: ${{ secrets.acr_fabmedicalsre_password }}
+    
+    - name: Build and push image to ACR
+      id: build-image
+      run: |
+        docker build "$GITHUB_WORKSPACE/content-web" -f  "content-web/Dockerfile" -t fabmedicalsre.azurecr.io/fabmedicalsre:${{ github.sha }} --label dockerfile-path=content-web/Dockerfile
+        docker push fabmedicalsre.azurecr.io/fabmedicalsre:${{ github.sha }}
+    
+    - uses: azure/k8s-set-context@v1
+      with:
+         kubeconfig: ${{ secrets.aks_fabmedicalsre_kubeConfig }}
+      id: login
+    
+    - name: Create namespace
+      run: |
+        namespacePresent=`kubectl get namespace | grep fabmedical-srewebkaka | wc -l`
+        if [ $namespacePresent -eq 0 ]
+        then
+            echo `kubectl create namespace fabmedical-srewebkaka`
+        fi
+
+    - uses: azure/k8s-create-secret@v1
+      with:
+        namespace: fabmedical-srewebkaka
+        container-registry-url: fabmedicalsre.azurecr.io
+        container-registry-username: ${{ secrets.acr_fabmedicalsre_username }}
+        container-registry-password: ${{ secrets.acr_fabmedicalsre_password }}
+        secret-name: fabmedicalsrdockerauth
+       
+    - uses: azure/k8s-deploy@v1.2
+      with:
+        namespace: fabmedical-srewebkaka
+        manifests: |
+          manifests/deployment.yml
+          manifests/service.yml
+        images: |
+          fabmedicalsre.azurecr.io/fabmedicalsre:${{ github.sha }}
+        imagepullsecrets: |
+          fabmedicalsrdockerauth
